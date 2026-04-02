@@ -8,7 +8,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body {
@@ -26,19 +25,47 @@
             animation: shimmer 3s infinite;
         }
         .radar-pulse {
-            animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+            animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
         }
         @keyframes ping {
             75%, 100% {
-                transform: scale(2);
+                transform: scale(2.5);
                 opacity: 0;
             }
+        }
+        /* Route Line Animation */
+        @keyframes dash {
+            to {
+                stroke-dashoffset: 0;
+            }
+        }
+        .route-line {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: dash 3s ease-out forwards;
+        }
+        /* Expand/Collapse Transition */
+        .collapsible-content {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .expanded .collapsible-content {
+            grid-template-rows: 1fr;
+        }
+        .collapsible-inner {
+            overflow: hidden;
+        }
+        .chevron-icon {
+            transition: transform 0.4s ease;
+        }
+        .expanded .chevron-icon {
+            transform: rotate(180deg);
         }
     </style>
 </head>
 <body class="text-neutral-900 pb-20">
 
-    <!-- Header Section -->
     <div class="relative h-[48vh] w-full bg-black overflow-hidden shadow-2xl">
         <img 
             src="https://cdn.mos.cms.futurecdn.net/9ipSrNdjMHP6Svi38L9YQG.jpg" 
@@ -47,7 +74,6 @@
         />
         <div class="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-neutral-100"></div>
         
-        <!-- Status Bar -->
         <div class="absolute top-10 left-8 right-8 flex justify-between items-center">
            <div class="flex items-center gap-3 bg-black/50 backdrop-blur-xl px-4 py-2 rounded-full border border-white/20 shadow-lg">
              <div class="flex items-center gap-2 pr-3 border-r border-white/10">
@@ -69,14 +95,11 @@
         </div>
     </div>
 
-    <!-- Itinerary Container -->
-    <div id="itinerary-content" class="px-6 mt-12 relative z-10 max-w-3xl mx-auto">
-        <!-- Content injected by script -->
-    </div>
+    <div id="itinerary-content" class="px-6 mt-12 relative z-10 max-w-3xl mx-auto"></div>
 
     <footer class="px-8 mt-20 text-center pb-16">
         <div class="max-w-[200px] mx-auto opacity-10 filter invert mb-8">
-           <i data-lucide="train" class="w-12 h-12 mx-auto"></i>
+           <i data-lucide="train-front" class="w-12 h-12 mx-auto"></i>
         </div>
         <p class="text-[10px] font-black text-neutral-400 uppercase tracking-[0.7em] leading-loose">
           Mind the Gap • Hear the 125 Roar
@@ -105,7 +128,7 @@
                     { id: "w2", departTime: "08:17", departStation: "Carlisle", arriveTime: "09:41", arriveStation: "Edinburgh", operator: "TransPennine", trainClass: "Nova 1", trainImg: IMAGES.trains.tpeNova1, liveTrackUrl: "https://www.realtimetrains.co.uk/service/gb-nr:C74073/2026-04-22/detailed", coach: "B", seats: "01 & 02" },
                     { id: "w3", departTime: "11:30", departStation: "Edinburgh", arriveTime: "13:50", arriveStation: "Aberdeen", operator: "ScotRail", trainClass: "Intercity 125", trainImg: IMAGES.trains.scotrail125, liveTrackUrl: "https://www.realtimetrains.co.uk/service/gb-nr:Y38533/2026-04-22/detailed", coach: "C", seats: "39F & 40F" }
                 ],
-                accommodation: { name: "Travelodge Aberdeen Central", img: IMAGES.places.travelodge, url: "https://www.travelodge.co.uk/hotels/1/Aberdeen-Central-hotel" }
+                accommodation: { id: "hotel-a1", name: "Travelodge Aberdeen Central", img: IMAGES.places.travelodge, url: "https://www.travelodge.co.uk/hotels/1/Aberdeen-Central-hotel", checkIn: "15:00" }
             },
             {
                 date: "Thu, Apr 23",
@@ -119,15 +142,58 @@
             }
         ];
 
-        function calculateConnection(arrival, nextDeparture) {
-            if (!arrival || !nextDeparture) return null;
-            const [arrH, arrM] = arrival.split(':').map(Number);
-            const [depH, depM] = nextDeparture.split(':').map(Number);
-            const diff = (depH * 60 + depM) - (arrH * 60 + arrM);
-            if (diff < 0) return null; 
+        function calculateTimeDiff(start, end) {
+            if (!start || !end) return null;
+            const [sH, sM] = start.split(':').map(Number);
+            const [eH, eM] = end.split(':').map(Number);
+            let diff = (eH * 60 + eM) - (sH * 60 + sM);
+            if (diff < 0) diff += 1440;
             const h = Math.floor(diff / 60);
             const m = diff % 60;
             return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        }
+
+        function toggleCollapsible(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('expanded');
+        }
+
+        function renderMapSvg(from, to, color = '#f59e0b') {
+            return `
+            <div class="relative w-full h-24 bg-neutral-950/50 rounded-xl border border-neutral-800 overflow-hidden mt-4">
+                <svg viewBox="0 0 400 100" class="w-full h-full p-4">
+                    <!-- Subtle Grid -->
+                    <defs>
+                        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="0.5"/>
+                        </pattern>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#grid)" />
+                    
+                    <!-- Path -->
+                    <path d="M 50 50 Q 200 20 350 50" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" class="route-line opacity-30" />
+                    <path d="M 50 50 Q 200 20 350 50" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 12" class="route-line" />
+                    
+                    <!-- Origin Node -->
+                    <circle cx="50" cy="50" r="4" fill="${color}" />
+                    <circle cx="50" cy="50" r="8" fill="${color}" class="radar-pulse opacity-20" />
+                    <text x="50" y="75" fill="white" font-size="7" font-weight="900" text-anchor="middle" class="uppercase tracking-tighter opacity-60">${from}</text>
+                    
+                    <!-- Destination Node -->
+                    <circle cx="350" cy="50" r="4" fill="${color}" />
+                    <text x="350" y="75" fill="white" font-size="7" font-weight="900" text-anchor="middle" class="uppercase tracking-tighter opacity-60">${to}</text>
+                    
+                    <!-- Progress marker -->
+                    <circle cx="150" cy="38" r="2" fill="white">
+                        <animate attributeName="cx" values="50;350" dur="4s" repeatCount="indefinite" />
+                        <animate attributeName="cy" values="50;20;50" dur="4s" repeatCount="indefinite" />
+                    </circle>
+                </svg>
+                <div class="absolute top-2 right-3 flex items-center gap-1.5">
+                    <span class="w-1 h-1 rounded-full bg-green-500 animate-pulse"></span>
+                    <span class="text-[7px] font-black text-neutral-500 uppercase tracking-widest">Route Telemetry Active</span>
+                </div>
+            </div>`;
         }
 
         function renderApp() {
@@ -136,106 +202,139 @@
 
             itineraryData.forEach(day => {
                 html += `
-                <div class="mb-24"> <!-- Increased margin bottom here -->
+                <div class="mb-24">
                     <div class="flex items-end justify-between mb-10 border-b-4 border-neutral-900 pb-3">
                         <div class="flex flex-col">
-                            <span class="text-[10px] font-black text-amber-600 uppercase tracking-[0.3em] mb-1">Rolling Stock Itinerary</span>
+                            <span class="text-[10px] font-black text-amber-600 uppercase tracking-[0.3em] mb-1">Expedition Logs</span>
                             <h2 class="text-4xl md:text-5xl font-black text-neutral-900 uppercase tracking-tighter italic leading-none">${day.date}</h2>
                         </div>
                         <div class="text-right">
-                            <p class="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-1">Schedule</p>
+                            <p class="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-1">Route Type</p>
                             <div class="text-2xl md:text-3xl font-black uppercase tracking-tighter">${day.type}</div>
                         </div>
                     </div>
                     <div class="space-y-4">`;
 
                 day.legs.forEach((leg, idx) => {
+                    const journeyTime = calculateTimeDiff(leg.departTime, leg.arriveTime);
                     html += `
-                    <div class="bg-[#111] rounded-2xl shadow-2xl overflow-hidden mb-8 border border-neutral-800">
-                        <div class="relative h-64 w-full overflow-hidden">
-                            <img src="${leg.trainImg}" class="object-cover w-full h-full brightness-75 contrast-125" />
-                            <div class="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-black/20"></div>
-                            
-                            <div class="absolute right-4 bottom-4">
-                                <a href="${leg.liveTrackUrl}" target="_blank" class="group relative flex items-center bg-amber-500 hover:bg-amber-400 text-black px-4 py-2 rounded-full font-black text-xs uppercase tracking-tighter transition-all shadow-lg overflow-hidden">
-                                    <div class="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-shimmer skew-x-12"></div>
-                                    <div class="relative z-10 flex items-center gap-2.5">
-                                        <div class="relative flex items-center justify-center w-7 h-7 bg-black/10 rounded-full overflow-hidden">
-                                            <span class="absolute inset-0 border border-black/20 rounded-full radar-pulse"></span>
-                                            <i data-lucide="train" class="w-3.5 h-3.5 stroke-[3px]"></i>
-                                        </div>
-                                        <div class="flex flex-col pr-1">
-                                            <span class="text-[10px] tracking-widest leading-none font-black">LIVE TRACK</span>
-                                            <div class="flex items-center gap-1.5 mt-0.5">
-                                                <span class="flex h-1 w-1 rounded-full bg-black animate-pulse"></span>
-                                                <span class="text-[7px] font-bold opacity-70 uppercase tracking-[0.1em]">REAL-TIME</span>
-                                            </div>
-                                        </div>
-                                        <i data-lucide="navigation" class="w-3 h-3 stroke-[3px] rotate-45 opacity-60"></i>
+                    <div id="collapsible-${leg.id}" class="leg-card bg-[#111] rounded-2xl shadow-2xl overflow-hidden mb-4 border border-neutral-800 transition-all">
+                        <div onclick="toggleCollapsible('collapsible-${leg.id}')" class="p-5 flex items-center justify-between cursor-pointer hover:bg-neutral-800 transition-colors group">
+                            <div class="flex items-center gap-4 md:gap-10">
+                                <div class="flex flex-col min-w-[110px]">
+                                    <div class="flex items-baseline gap-1.5">
+                                      <span class="text-amber-500 font-mono text-2xl font-bold leading-none tracking-tighter">${leg.departTime}</span>
+                                      <span class="text-neutral-500 font-mono text-xs font-bold">/ ${leg.arriveTime}</span>
                                     </div>
+                                    <div class="flex items-center gap-1 mt-1 text-neutral-600">
+                                        <i data-lucide="timer" class="w-2 h-2"></i>
+                                        <span class="text-[8px] font-black uppercase tracking-widest">${journeyTime}</span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col">
+                                    <h3 class="text-white text-lg font-black uppercase tracking-tight leading-none group-hover:text-amber-400 transition-colors">${leg.departStation}</h3>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <i data-lucide="chevrons-right" class="w-2.5 h-2.5 text-neutral-600"></i>
+                                        <span class="text-neutral-400 text-[9px] font-bold uppercase tracking-widest">${leg.arriveStation}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <a href="${leg.liveTrackUrl}" target="_blank" onclick="event.stopPropagation()" class="p-2.5 bg-neutral-900 hover:bg-amber-500 text-amber-500 hover:text-black rounded-full transition-all border border-neutral-800 hover:border-amber-400 shadow-lg relative block">
+                                    <i data-lucide="train-front" class="w-4 h-4 stroke-[2.5px]"></i>
                                 </a>
+                                <i data-lucide="chevron-down" class="chevron-icon w-5 h-5 text-neutral-600 group-hover:text-amber-500"></i>
                             </div>
                         </div>
-                        <div class="p-6">
-                            <div class="flex flex-col gap-4">
-                                <div class="flex justify-between items-start border-b border-neutral-800 pb-4">
-                                    <div class="space-y-1">
-                                        <p class="text-amber-500 font-mono text-4xl font-bold tracking-tight">${leg.departTime}</p>
-                                        <h3 class="text-white text-xl font-black uppercase tracking-tight leading-none">${leg.departStation}</h3>
-                                        <p class="text-neutral-500 text-[10px] font-bold uppercase tracking-widest">${leg.operator}</p>
-                                    </div>
-                                    <div class="text-right space-y-1">
-                                        <p class="text-neutral-400 font-mono text-xl font-bold">${leg.arriveTime}</p>
-                                        <h3 class="text-neutral-300 text-sm font-bold uppercase tracking-tight">${leg.arriveStation}</h3>
-                                        <p class="text-neutral-600 text-[10px] font-bold uppercase tracking-widest">Destination</p>
+
+                        <div class="collapsible-content">
+                            <div class="collapsible-inner">
+                                <div class="relative h-48 w-full overflow-hidden border-t border-neutral-800">
+                                    <img src="${leg.trainImg}" class="object-cover w-full h-full brightness-50 contrast-125 grayscale hover:grayscale-0 transition-all duration-700" />
+                                    <div class="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-black/40"></div>
+                                    
+                                    <div class="absolute left-6 bottom-6 flex items-center gap-4">
+                                        <div class="flex flex-col">
+                                            <span class="text-amber-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Assigned Service</span>
+                                            <h4 class="text-white text-2xl font-black uppercase tracking-tighter italic leading-none">${leg.trainClass}</h4>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="bg-black border border-amber-900/30 p-4 rounded-lg flex flex-wrap items-center gap-4">
-                                    ${leg.isFreeSeating ? `
-                                        <div class="flex flex-col">
-                                            <span class="text-neutral-600 text-[8px] font-black uppercase tracking-widest">Boarding Info</span>
-                                            <span class="text-amber-500 font-mono text-lg font-bold">FREE SEATING</span>
+                                <div class="p-6 bg-neutral-900/40">
+                                    <div class="flex flex-col gap-6">
+                                        
+                                        <!-- Journey Visual Map -->
+                                        ${renderMapSvg(leg.departStation, leg.arriveStation)}
+
+                                        <div class="flex justify-between items-start border-b border-neutral-800 pb-6">
+                                            <div class="space-y-1">
+                                                <p class="text-amber-500 font-mono text-4xl font-bold tracking-tight">${leg.departTime}</p>
+                                                <h3 class="text-white text-xl font-black uppercase tracking-tight leading-none">${leg.departStation}</h3>
+                                                <p class="text-neutral-500 text-[10px] font-bold uppercase tracking-widest">${leg.operator}</p>
+                                            </div>
+                                            <div class="text-right space-y-1">
+                                                <p class="text-neutral-400 font-mono text-xl font-bold">${leg.arriveTime}</p>
+                                                <h3 class="text-neutral-300 text-sm font-bold uppercase tracking-tight">${leg.arriveStation}</h3>
+                                                <div class="flex items-center justify-end gap-1.5 mt-1 text-neutral-600">
+                                                    <i data-lucide="timer" class="w-3 h-3"></i>
+                                                    <p class="text-[10px] font-black uppercase tracking-widest">${journeyTime}</p>
+                                                </div>
+                                            </div>
                                         </div>
-                                    ` : `
-                                        <div class="flex flex-col">
-                                            <span class="text-neutral-600 text-[8px] font-black uppercase tracking-widest">Coach</span>
-                                            <span class="text-amber-500 font-mono text-lg font-bold">${leg.coach}</span>
+
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div class="bg-black border border-neutral-800 p-4 rounded-xl shadow-inner">
+                                                <span class="text-neutral-600 text-[8px] font-black uppercase tracking-widest block mb-2">Ticketing / Seating</span>
+                                                ${leg.isFreeSeating ? `
+                                                    <span class="text-amber-500 font-mono text-lg font-bold uppercase">Unreserved</span>
+                                                ` : `
+                                                    <div class="flex items-center gap-4">
+                                                        <div>
+                                                            <p class="text-neutral-500 text-[8px] uppercase font-bold">Coach</p>
+                                                            <p class="text-amber-500 font-mono text-xl font-bold">${leg.coach}</p>
+                                                        </div>
+                                                        <div class="h-6 w-[1px] bg-neutral-800"></div>
+                                                        <div>
+                                                            <p class="text-neutral-500 text-[8px] uppercase font-bold">Seats</p>
+                                                            <p class="text-amber-500 font-mono text-xl font-bold">${leg.seats}</p>
+                                                        </div>
+                                                    </div>
+                                                `}
+                                            </div>
+                                            <a href="${leg.liveTrackUrl}" target="_blank" class="bg-amber-500 p-4 rounded-xl flex flex-col justify-between hover:bg-amber-400 transition-colors">
+                                                <span class="text-black text-[8px] font-black uppercase tracking-widest opacity-60">Operations</span>
+                                                <div class="flex items-center justify-between">
+                                                    <span class="text-black font-black text-xs tracking-tighter uppercase">Track Live</span>
+                                                    <i data-lucide="external-link" class="w-4 h-4 text-black"></i>
+                                                </div>
+                                            </a>
                                         </div>
-                                        <div class="w-[1px] h-8 bg-neutral-800"></div>
-                                        <div class="flex flex-col">
-                                            <span class="text-neutral-600 text-[8px] font-black uppercase tracking-widest">Reserved Seats</span>
-                                            <span class="text-amber-500 font-mono text-lg font-bold">${leg.seats}</span>
-                                        </div>
-                                    `}
-                                    <div class="flex-1 text-right flex flex-col justify-center">
-                                        <span class="text-neutral-600 text-[8px] font-black uppercase tracking-widest">Train Service</span>
-                                        <span class="text-neutral-300 font-bold text-xs uppercase">${leg.trainClass}</span>
+
+                                        ${leg.seatNote ? `
+                                            <div class="flex items-center gap-3 bg-amber-500/5 border border-amber-500/20 px-4 py-3 rounded-xl">
+                                                <i data-lucide="info" class="w-3 h-3 text-amber-500"></i>
+                                                <p class="text-[9px] font-bold text-amber-100/70 uppercase tracking-wide leading-tight">${leg.seatNote}</p>
+                                            </div>
+                                        ` : ''}
                                     </div>
                                 </div>
-                                ${leg.seatNote ? `
-                                    <div class="flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-md">
-                                        <div class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></div>
-                                        <p class="text-[10px] font-bold text-amber-200/80 uppercase tracking-tight leading-tight">${leg.seatNote}</p>
-                                    </div>
-                                ` : ''}
                             </div>
                         </div>
                     </div>`;
 
                     const nextLeg = day.legs[idx + 1];
                     if (nextLeg) {
-                        const conn = calculateConnection(leg.arriveTime, nextLeg.departTime);
+                        const conn = calculateTimeDiff(leg.arriveTime, nextLeg.departTime);
                         html += `
-                        <div class="flex items-center gap-4 mb-8 px-2">
-                            <div class="relative flex items-center gap-3 bg-neutral-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] border border-neutral-700 shadow-xl overflow-hidden">
+                        <div class="flex items-center gap-4 mb-4 px-2">
+                            <div class="relative flex items-center gap-3 bg-neutral-900 text-white px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.15em] border border-neutral-700 shadow-xl overflow-hidden">
                                 <div class="absolute inset-0 bg-amber-500/5 animate-pulse"></div>
                                 <div class="relative flex items-center gap-2">
-                                    <i data-lucide="timer" class="w-3.5 h-3.5 text-amber-500"></i> 
-                                    <span>${conn} Transfer Window</span>
+                                    <i data-lucide="clock-3" class="w-3 h-3 text-amber-500"></i> 
+                                    <span>${conn} Connection at ${leg.arriveStation}</span>
                                 </div>
-                                <div class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse ml-auto"></div>
                             </div>
-                            <div class="flex-1 h-[2px] bg-neutral-900/10 rounded-full"></div>
+                            <div class="flex-1 h-[1px] bg-neutral-200/10 rounded-full"></div>
                         </div>`;
                     }
                 });
@@ -244,24 +343,54 @@
 
                 if (day.accommodation) {
                     html += `
-                    <div class="mt-8 mb-16"> <!-- Added wrapper with extra margin -->
-                        <a href="${day.accommodation.url}" target="_blank" class="bg-white rounded-3xl p-6 flex items-center gap-6 shadow-2xl border border-neutral-200 ring-4 ring-neutral-100/50 hover:ring-amber-200/50 hover:border-amber-200 transition-all group block">
-                            <div class="w-24 h-24 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-neutral-100 shadow-inner group-hover:scale-105 transition-transform">
-                                <img src="${day.accommodation.img}" class="w-full h-full object-cover saturate-[1.1]" alt="Hotel" />
-                            </div>
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 text-neutral-400 mb-2 group-hover:text-amber-500 transition-colors">
-                                    <i data-lucide="bed" class="w-4 h-4"></i>
-                                    <span class="text-[10px] font-black uppercase tracking-[0.3em]">Overnight</span>
+                    <div id="${day.accommodation.id}" class="mt-8 mb-24 bg-[#111] rounded-2xl shadow-2xl overflow-hidden border border-neutral-800 transition-all">
+                        <div onclick="toggleCollapsible('${day.accommodation.id}')" class="p-5 flex items-center justify-between cursor-pointer hover:bg-neutral-800 transition-colors group">
+                            <div class="flex items-center gap-4 md:gap-10">
+                                <div class="flex flex-col min-w-[110px]">
+                                    <div class="flex items-baseline gap-1.5">
+                                      <span class="text-blue-500 font-mono text-2xl font-bold leading-none tracking-tighter">${day.accommodation.checkIn}</span>
+                                    </div>
+                                    <span class="text-neutral-600 text-[8px] font-black uppercase tracking-widest mt-1">Arrival</span>
                                 </div>
-                                <h3 class="text-2xl font-black text-neutral-900 leading-tight uppercase tracking-tight group-hover:text-amber-600 transition-colors">${day.accommodation.name}</h3>
-                                <div class="mt-3 inline-flex items-center gap-2 text-[10px] font-black text-green-700 bg-green-50 px-4 py-1.5 rounded-full border border-green-200">
-                                    <div class="w-2 h-2 rounded-full bg-green-500"></div>
-                                    CHECK-IN 15:00
+                                <div class="flex flex-col">
+                                    <h3 class="text-white text-lg font-black uppercase tracking-tight leading-none group-hover:text-blue-400 transition-colors">${day.accommodation.name}</h3>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <i data-lucide="map-pin" class="w-2.5 h-2.5 text-neutral-600"></i>
+                                        <span class="text-neutral-400 text-[9px] font-bold uppercase tracking-widest">HQ</span>
+                                    </div>
                                 </div>
                             </div>
-                            <i data-lucide="chevron-right" class="w-6 h-6 text-neutral-300 group-hover:text-amber-500 group-hover:translate-x-1 transition-all"></i>
-                        </a>
+                            <div class="flex items-center gap-3">
+                                <a href="${day.accommodation.url}" target="_blank" onclick="event.stopPropagation()" class="p-2.5 bg-neutral-900 hover:bg-blue-500 text-blue-500 hover:text-black rounded-full transition-all border border-neutral-800 hover:border-blue-400 block">
+                                    <i data-lucide="map" class="w-4 h-4 stroke-[2.5px]"></i>
+                                </a>
+                                <i data-lucide="chevron-down" class="chevron-icon w-5 h-5 text-neutral-600 group-hover:text-blue-500"></i>
+                            </div>
+                        </div>
+
+                        <div class="collapsible-content">
+                            <div class="collapsible-inner">
+                                <div class="relative h-64 w-full overflow-hidden border-t border-neutral-800">
+                                    <img src="${day.accommodation.img}" class="object-cover w-full h-full brightness-75 contrast-125 saturate-50" />
+                                    <div class="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-black/20"></div>
+                                </div>
+                                <div class="p-6 bg-neutral-900/40">
+                                    <div class="bg-black border border-blue-900/30 p-4 rounded-lg flex items-center justify-between shadow-inner">
+                                        <div class="flex flex-col">
+                                            <span class="text-neutral-600 text-[8px] font-black uppercase tracking-widest">Base Protocol</span>
+                                            <div class="flex items-center gap-2 mt-0.5">
+                                                <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                                                <span class="text-neutral-300 font-mono text-lg font-bold uppercase tracking-tighter">SECURED</span>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <span class="text-neutral-600 text-[8px] font-black uppercase tracking-widest">Check-In</span>
+                                            <span class="block text-blue-400 font-mono text-xl font-bold italic">${day.accommodation.checkIn} HRS</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>`;
                 }
             });
